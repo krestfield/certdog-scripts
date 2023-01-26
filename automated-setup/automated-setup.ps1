@@ -30,6 +30,8 @@ $intCaConfigName = "Certdog Test Issuing CA"
 $intCaConfigDn = "CN=Certdog Test Issuing CA,O=Krestfield"
 # #############################################################################
 # #############################################################################
+$installDir = "C:\certdogfree"
+$issuerName = "Certdog TLS Issuer"
 
 <#
 .Synopsis
@@ -70,7 +72,7 @@ Function Install-Certdog
 
     # Install the test root certificate to avoid local SSL errors
     # NOTE: This should be removed from the local trust store once a new SSL cert has been installed
-    Import-Certificate -FilePath "C:\certdogfree\config\sslcerts\dbssl_root.cer" -CertStoreLocation Cert:\LocalMachine\Root
+    Import-Certificate -FilePath "$($installDir)\config\sslcerts\dbssl_root.cer" -CertStoreLocation Cert:\LocalMachine\Root
 }
 
 <#
@@ -115,7 +117,8 @@ Function Configure-Certdog
                             -crlFilename "C:\certdogfree\tomcat\crlwebapps\certdog#crl\rootca.crl" -cdps @($cdpUrl) `
                             -policies @("User Notice|1.3.6.1.4.1.33528.1.2.100.1|For test purposes only")
     $cert = $ca.caCertificate
-    Set-Content -Path "c:\certdogfree\bin\rootCert.cer" -Value $cert
+    New-Item -Path $installDir -Name "certs" -ItemType "directory"
+    Set-Content -Path "$($installDir)\certs\rootCert.cer" -Value $cert
 
     $intCaConfigName = "Certdog Test Issuing CA"
     $intCaConfigDn = "CN=Certdog Test Issuing CA,O=Krestfield"
@@ -129,7 +132,7 @@ Function Configure-Certdog
                                -crlFilename "C:\certdogfree\tomcat\crlwebapps\certdog#crl\issuingca.crl" -cdps @($cdpUrl) -aiaOcspUrls @($ocspUrl) `
                                -policies @("User Notice|1.3.6.1.4.1.33528.1.2.100.1|For test purposes only")
     $intCert = $intCa.caCertificate
-    Set-Content -Path "c:\certdogfree\bin\intCert.cer" -Value $intCert
+    Set-Content -Path "$($installDir)\certs\intCert.cer" -Value $intCert
 
     $ocspServer = Set-OCSPForLocalCA -id $intCa.id
 
@@ -138,7 +141,7 @@ Function Configure-Certdog
     $tlsProfile = Add-LocalCACertProfile -name $tlsProfileName -lifetimeInMinutes 129600 -includeSansFromCsr $true -enhancedKeyUsages @('clientAuth', 'serverAuth') -keyUsages @('digitalSignature','keyEncipherment')
 
     # Create TLS cert issuer
-    $certIssuerName = "Certdog TLS Issuer"
+    $certIssuerName = $issuerName
     $tlsCertIssuer = Add-LocalCA -caName $certIssuerName -localCaConfigId $intCa.id -certProfileId $tlsProfile.id
 
     # Create a CSR Generator
@@ -163,8 +166,11 @@ Function Import-Certs
 {
     # Remove the module and call the native Import-Certificate to import the CA certs to the machine store
     Remove-Module -Name certdog-module
-    Import-Certificate -FilePath "c:\certdogfree\bin\rootCert.cer" -CertStoreLocation Cert:\LocalMachine\Root
-    Import-Certificate -FilePath "c:\certdogfree\bin\intCert.cer" -CertStoreLocation Cert:\LocalMachine\CA
+    Import-Certificate -FilePath "$($installDir)\certs\rootCert.cer" -CertStoreLocation Cert:\LocalMachine\Root
+    Import-Certificate -FilePath "$($installDir)\certs\intCert.cer" -CertStoreLocation Cert:\LocalMachine\CA
+    Write-Host "The Root and CA certificates have been imported to the local certificate store. To publish to AD, use the following commands:"
+    Write-Host "  certutil.exe -dspublish -f $installDir\certs\rootCert.cer RootCA"
+    Write-Host "  certutil.exe -dspublish -f $installDir\certs\intCert.cer SubCA"
 }
 
 <#
