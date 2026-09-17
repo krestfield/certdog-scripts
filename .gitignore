@@ -1,2 +1,14 @@
 
 sign-powershell.ps1
+check-csr-sans-in-dns/CertSanCheck.log
+check-csr-sans-in-dns/check-san-log.txt
+check-csr-sans-in-dns/google-bad.p10
+check-csr-sans-in-dns/google.cer
+check-csr-sans-in-dns/google.p10
+check-csr-sans-in-dns/test-csr.ps1
+check-csr-sans-in-dns/test.ps1
+csr-folder-watcher/test.ps1
+gen-weekly-report/CertdogWeeklyReport_2026-08-25.xlsx
+gen-weekly-report/test.ps1
+get-certs-from-adcs/Get-AdcsCertificates-Original.ps1
+renew-revoke-duplicate-certs/test.ps1

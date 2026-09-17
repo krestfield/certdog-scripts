@@ -46,7 +46,7 @@ Function Download-Certdog
     # Download the installer
     Write-Host "`nDownloading certdog..."
     $webClient = New-Object System.Net.WebClient
-    $webClient.DownloadFile('https://krestfield.s3.eu-west-2.amazonaws.com/certdog/certdogfree_v190.zip', 'c:\certdog.zip')
+    $webClient.DownloadFile('https://krestfield.s3.dualstack.eu-west-2.amazonaws.com/certdog/certdog-free-win-v1.17.0.zip', 'c:\certdog.zip')
 
     # Extract the zip
     cd \
