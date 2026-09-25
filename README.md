@@ -15,6 +15,7 @@ And scripts that can be used by the Tasks or Workflows features:
 * check-csr-sans-in-dns
   * Checks if the SANs included in the CSR request are registered in DNS
   * This can be used as an approval step, verifying the FQDN is a valid one
+  * Use -LocalOnly (or -Strict) to only accept names within your own domain(s), not any name that resolves on the internet
 
 * gen-weekly-report
   * Produce a periodic CSV file summarising certificates issued
