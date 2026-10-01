@@ -26,3 +26,7 @@ And scripts that can be used by the Tasks or Workflows features:
 * renew-revoke-duplicate-certs
   * Marks certificates with the same CN or DN as renewed or revoked
   * Useful, if your requirement is to only allow one certificate at a time with the same name
+ 
+* check-duplicate-certs
+  * Checks if certificates with the same DN or optionally CN exist
+  * Can be used as with a *Certificate Request* workflow to prevent duplicate certificates from being issued
