@@ -30,3 +30,8 @@ And scripts that can be used by the Tasks or Workflows features:
 * check-duplicate-certs
   * Checks if certificates with the same DN or optionally CN exist
   * Can be used as with a *Certificate Request* workflow to prevent duplicate certificates from being issued
+
+* discover-endpoint-certs
+  * Given a list of endpoints (krestfield.com, github.com) extracts the certificates and imports into certdog
+  * This enables tracking of end point TLS certificates
+  * Can also produce an html report of findings
