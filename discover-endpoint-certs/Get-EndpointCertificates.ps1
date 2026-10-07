@@ -36,6 +36,19 @@
 .PARAMETER htmlReportTitle
     Optional. The title of the HTML report. Defaults to "Certificate End Point Scan".
 
+.PARAMETER cssFile
+    Optional. A CSS stylesheet for the HTML report, so its formatting and colours can be
+    defined by the user. When provided, the report links to this stylesheet rather than
+    using the built-in styles. It may be:
+      - A path relative to the HTML report, e.g. "report.css" (the usual choice when the
+        report is served by a web server - place the CSS alongside the report)
+      - A full path, e.g. "C:\certdog\styles\report.css" (linked as a file:/// URL,
+        so only works when the report is opened directly from disk)
+      - A URL, e.g. "https://intranet.example.com/styles/report.css"
+    If a relative or full path is given and the file does not exist, it is created
+    containing the default styles, as a starting point for editing. An existing file is
+    never overwritten. See report.css in this folder for the classes that can be styled.
+
 .PARAMETER endPoints
     The end points to scan, e.g. 'google.com', 'krestfield.com:8443'. Port 443 is used
     if no port is specified. A URL may also be given (e.g. https://krestfield.com/path).
@@ -70,6 +83,10 @@
     .\Get-EndpointCertificates.ps1 -apiToken "eyJhbGciOi..." -apiUrl "https://certdog.local/certdog/api" `
         -endPoints 'google.com', 'krestfield.com:8443' -teamId "6a7dda093203323798ccfd00" `
         -htmlFile "C:\reports\daily-url-check.html" -htmlReportTitle "Daily Company URL Check"
+
+.EXAMPLE
+    .\Get-EndpointCertificates.ps1 -apiToken "eyJhbGciOi..." -endPoints 'google.com', 'krestfield.com' `
+        -htmlFile "C:\certdog\tomcat\webapps\certdog#reports\index.html" -cssFile "report.css"
 #>
 
 [CmdletBinding()]
@@ -82,6 +99,8 @@ param(
     [string]$htmlFile,
 
     [string]$htmlReportTitle = 'Certificate End Point Scan',
+
+    [string]$cssFile,
 
     [Parameter(Mandatory = $true)]
     [string[]]$endPoints,
@@ -460,17 +479,80 @@ Write-Host "Scanned $($endPointList.Count) end point(s). Results: $okCount OK, $
 
 # --- HTML report -----------------------------------------------------------
 
+# The default report styles. Used inline when -cssFile is not provided, and written to
+# the CSS file as a starting point when -cssFile is provided but does not yet exist.
+$defaultCss = @'
+/* Styles for the certdog end point scan report */
+
+body { font-family: "Segoe UI", Arial, sans-serif; margin: 24px; color: #222; }
+
+/* Title and last run time */
+.report-title { margin-bottom: 4px; }
+.report-last-run { color: #555; margin-bottom: 16px; }
+
+/* Results table */
+.report-table { border-collapse: collapse; width: 100%; }
+.report-table th,
+.report-table td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+.report-table th { background: #f0f0f0; }
+
+/* Columns: col-endpoint, col-info, col-subject, col-serial, col-validto, col-status, col-link */
+.col-serial { font-family: Consolas, monospace; }
+
+/* Status. Applied to both the row (tr) and the Status cell (td) */
+td.status-ok { color: #1b6e20; font-weight: bold; }
+td.status-expiring { color: #9a6700; font-weight: bold; }
+td.status-fail { color: #b00020; font-weight: bold; }
+'@
+
 if ($htmlFile) {
     function ConvertTo-HtmlText {
         param($Value)
         return [System.Net.WebUtility]::HtmlEncode([string]$Value)
     }
 
+    $reportFolder = Split-Path -Path $htmlFile -Parent
+
+    $styleTag = "<style>`n$defaultCss`n</style>"
+    if ($cssFile) {
+        if ($cssFile -match '^[a-z][a-z0-9+.-]*://') {
+            # A URL - link to it as is
+            $cssHref = $cssFile
+            $cssPath = $null
+        }
+        elseif ([System.IO.Path]::IsPathRooted($cssFile)) {
+            # A full path - browsers need a file:/// URL for this
+            $cssHref = (New-Object System.Uri($cssFile, [System.UriKind]::Absolute)).AbsoluteUri
+            $cssPath = $cssFile
+        }
+        else {
+            # Relative to the report
+            $cssHref = $cssFile -replace '\\', '/'
+            $cssPath = if ($reportFolder) { Join-Path -Path $reportFolder -ChildPath $cssFile } else { $cssFile }
+        }
+
+        if ($cssPath -and -not (Test-Path -LiteralPath $cssPath)) {
+            try {
+                $cssFolder = Split-Path -Path $cssPath -Parent
+                if ($cssFolder -and -not (Test-Path -LiteralPath $cssFolder)) {
+                    New-Item -Path $cssFolder -ItemType Directory -Force | Out-Null
+                }
+                Set-Content -LiteralPath $cssPath -Value $defaultCss -Encoding UTF8
+                Write-Host "CSS file $cssPath did not exist. Created it with the default styles"
+            }
+            catch {
+                Write-Host "Unable to create the CSS file $cssPath. Error: $($_.Exception.Message)"
+            }
+        }
+
+        $styleTag = "<link rel=`"stylesheet`" href=`"$(ConvertTo-HtmlText $cssHref)`">"
+    }
+
     $rows = foreach ($result in $results) {
-        $statusClass = switch -Wildcard ($result.Status) {
-            'OK - Expiring Soon' { 'warn' }
-            'OK'                 { 'ok' }
-            default              { 'fail' }
+        $statusClass = switch ($result.Status) {
+            'OK'                 { 'status-ok' }
+            'OK - Expiring Soon' { 'status-expiring' }
+            default              { 'status-fail' }
         }
 
         $link = ''
@@ -480,14 +562,14 @@ if ($htmlFile) {
         }
 
         @"
-      <tr>
-        <td>$(ConvertTo-HtmlText $result.EndPoint)</td>
-        <td>$(ConvertTo-HtmlText $result.Info)</td>
-        <td>$(ConvertTo-HtmlText $result.Subject)</td>
-        <td>$(ConvertTo-HtmlText $result.SerialNumber)</td>
-        <td>$(ConvertTo-HtmlText $result.ValidTo)</td>
-        <td class="$statusClass">$(ConvertTo-HtmlText $result.Status)</td>
-        <td>$link</td>
+      <tr class="$statusClass">
+        <td class="col-endpoint">$(ConvertTo-HtmlText $result.EndPoint)</td>
+        <td class="col-info">$(ConvertTo-HtmlText $result.Info)</td>
+        <td class="col-subject">$(ConvertTo-HtmlText $result.Subject)</td>
+        <td class="col-serial">$(ConvertTo-HtmlText $result.SerialNumber)</td>
+        <td class="col-validto">$(ConvertTo-HtmlText $result.ValidTo)</td>
+        <td class="col-status $statusClass">$(ConvertTo-HtmlText $result.Status)</td>
+        <td class="col-link">$link</td>
       </tr>
 "@
     }
@@ -501,31 +583,21 @@ if ($htmlFile) {
 <head>
   <meta charset="utf-8">
   <title>$title</title>
-  <style>
-    body { font-family: Segoe UI, Arial, sans-serif; margin: 24px; color: #222; }
-    h1 { margin-bottom: 4px; }
-    .lastrun { color: #555; margin-bottom: 16px; }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
-    th { background: #f0f0f0; }
-    td.ok { color: #1b6e20; font-weight: bold; }
-    td.warn { color: #9a6700; font-weight: bold; }
-    td.fail { color: #b00020; font-weight: bold; }
-  </style>
+  $styleTag
 </head>
 <body>
-  <h1>$title</h1>
-  <div class="lastrun">Last Run: $lastRun</div>
-  <table>
+  <h1 class="report-title">$title</h1>
+  <div class="report-last-run">Last Run: $lastRun</div>
+  <table class="report-table">
     <thead>
       <tr>
-        <th>End Point</th>
-        <th>Info</th>
-        <th>Subject</th>
-        <th>Serial Number</th>
-        <th>Valid To</th>
-        <th>Status</th>
-        <th>Link</th>
+        <th class="col-endpoint">End Point</th>
+        <th class="col-info">Info</th>
+        <th class="col-subject">Subject</th>
+        <th class="col-serial">Serial Number</th>
+        <th class="col-validto">Valid To</th>
+        <th class="col-status">Status</th>
+        <th class="col-link">Link</th>
       </tr>
     </thead>
     <tbody>
@@ -537,7 +609,6 @@ $($rows -join "`n")
 "@
 
     try {
-        $reportFolder = Split-Path -Path $htmlFile -Parent
         if ($reportFolder -and -not (Test-Path -LiteralPath $reportFolder)) {
             New-Item -Path $reportFolder -ItemType Directory -Force | Out-Null
         }

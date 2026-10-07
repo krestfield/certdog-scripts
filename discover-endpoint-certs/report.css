@@ -1,0 +1,21 @@
+/* Styles for the certdog end point scan report */
+
+body { font-family: "Segoe UI", Arial, sans-serif; margin: 24px; color: #222; }
+
+/* Title and last run time */
+.report-title { margin-bottom: 4px; }
+.report-last-run { color: #555; margin-bottom: 16px; }
+
+/* Results table */
+.report-table { border-collapse: collapse; width: 100%; }
+.report-table th,
+.report-table td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+.report-table th { background: #f0f0f0; }
+
+/* Columns: col-endpoint, col-info, col-subject, col-serial, col-validto, col-status, col-link */
+.col-serial { font-family: Consolas, monospace; }
+
+/* Status. Applied to both the row (tr) and the Status cell (td) */
+td.status-ok { color: #1b6e20; font-weight: bold; }
+td.status-expiring { color: #9a6700; font-weight: bold; }
+td.status-fail { color: #b00020; font-weight: bold; }
