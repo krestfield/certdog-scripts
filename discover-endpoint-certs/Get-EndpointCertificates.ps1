@@ -242,11 +242,29 @@ function ConvertTo-PemCertificate {
     return "-----BEGIN CERTIFICATE-----`n$($base64 -replace "`r`n", "`n")`n-----END CERTIFICATE-----"
 }
 
+# When an API call fails, the certdog module throws the parsed JSON response body
+# (e.g. @{ status = 409; error = 'Conflict'; message = '...' }) rather than the original
+# web error. Returns that body if this error is one of those, otherwise $null.
+function Get-ErrorResponseObject {
+    param($ErrorRecord)
+
+    $target = $ErrorRecord.TargetObject
+    if ($target -is [psobject] -and -not ($target -is [string]) -and
+        ($target.PSObject.Properties['status'] -or $target.PSObject.Properties['message'])) {
+        return $target
+    }
+    return $null
+}
+
 # Collects all of the text available for an error (message and any response body)
 function Get-ErrorText {
     param($ErrorRecord)
 
     $parts = @()
+    $response = Get-ErrorResponseObject -ErrorRecord $ErrorRecord
+    if ($response -and $response.message) {
+        $parts += [string]$response.message
+    }
     if ($ErrorRecord.ErrorDetails -and $ErrorRecord.ErrorDetails.Message) {
         $parts += $ErrorRecord.ErrorDetails.Message
     }
@@ -258,6 +276,11 @@ function Get-ErrorText {
 # Gets the HTTP status code from an error, if there is one
 function Get-ErrorStatusCode {
     param($ErrorRecord)
+
+    $response = Get-ErrorResponseObject -ErrorRecord $ErrorRecord
+    if ($response -and $response.status) {
+        try { return [int]$response.status } catch { }
+    }
 
     try {
         if ($ErrorRecord.Exception.Response -and $ErrorRecord.Exception.Response.StatusCode) {
@@ -272,6 +295,12 @@ function Get-ErrorStatusCode {
 # body if there is one, otherwise the exception message
 function Get-ErrorMessage {
     param($ErrorRecord)
+
+    $response = Get-ErrorResponseObject -ErrorRecord $ErrorRecord
+    if ($response) {
+        if ($response.message) { return [string]$response.message }
+        if ($response.error) { return "$($response.status) $($response.error)" }
+    }
 
     if ($ErrorRecord.ErrorDetails -and $ErrorRecord.ErrorDetails.Message) {
         try {
@@ -289,13 +318,19 @@ function Get-ErrorMessage {
 function Import-EndPointCertificate {
     param([System.Security.Cryptography.X509Certificates.X509Certificate2]$Certificate)
 
-    $importParams = @{ certData = (ConvertTo-PemCertificate -Certificate $Certificate) }
-    if ($ownerId) { $importParams.ownerId = $ownerId }
-    if ($teamId) { $importParams.teamId = $teamId }
+    # ownerId and teamId are mandatory parameters of the module's Import-Certificate, so
+    # are always passed - as empty strings when not set, which certdog treats as not provided
+    $importParams = @{
+        certData = (ConvertTo-PemCertificate -Certificate $Certificate)
+        ownerId  = if ($ownerId) { $ownerId } else { '' }
+        teamId   = if ($teamId) { $teamId } else { '' }
+    }
     if ($extraInfo) { $importParams.extraInfo = $extraInfo }
 
     try {
-        $cert = certdog-module\Import-Certificate @importParams
+        # 6>$null hides the module's own "Import-Certificate failed" output (which it writes
+        # for every 409). Any error is reported below instead.
+        $cert = certdog-module\Import-Certificate @importParams 6>$null
         return [pscustomobject]@{ Cert = $cert; IsNew = $true }
     }
     catch {
